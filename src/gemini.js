@@ -93,7 +93,42 @@ function formatGeminiContents(messages) {
 
 // Run multi-turn agent loop with tool execution
 async function runAgentTurn({ apiKey, model, messages, onChunk, onArtifactCreated }) {
-  const targetModel = model || 'gemini-2.5-flash';
+  const fallbackModels = [
+    model,
+    'gemini-3.5-flash',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite'
+  ].filter(Boolean);
+
+  // Deduplicate
+  const candidateModels = Array.from(new Set(fallbackModels));
+  let lastError = null;
+
+  for (const targetModel of candidateModels) {
+    try {
+      return await executeModelTurn({
+        apiKey,
+        targetModel,
+        messages,
+        onChunk,
+        onArtifactCreated
+      });
+    } catch (err) {
+      lastError = err;
+      const msg = err.message || '';
+      if (msg.includes('404') || msg.includes('no longer available') || msg.includes('not found')) {
+        console.warn(`[Gemini] Model ${targetModel} failed (${msg}), falling back to next candidate...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError || new Error('All model attempts failed');
+}
+
+async function executeModelTurn({ apiKey, targetModel, messages, onChunk, onArtifactCreated }) {
   let turnContents = formatGeminiContents(messages);
   const maxToolIterations = 10;
   let iteration = 0;
