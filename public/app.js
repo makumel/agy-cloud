@@ -65,7 +65,12 @@ function getStoredApiKey() {
 }
 
 function getStoredModel() {
-  return localStorage.getItem('agy_gemini_model') || 'gemini-2.5-flash';
+  const model = localStorage.getItem('agy_gemini_model');
+  if (!model || model === 'gemini-2.5-flash' || model === 'gemini-1.5-pro' || model === 'gemini-2.0-flash') {
+    localStorage.setItem('agy_gemini_model', 'gemini-3.5-flash');
+    return 'gemini-3.5-flash';
+  }
+  return model;
 }
 
 function saveConfig(apiKey, model) {
@@ -671,6 +676,149 @@ hubRefreshBtn.addEventListener('click', () => {
   loadMemoryBank();
   fetchSystemTelemetry();
 });
+
+// --- Project Import & Git Modal Handling ---
+const importModal = document.getElementById('import-modal');
+const openImportBtn = document.getElementById('open-import-btn');
+const closeImportBtn = document.getElementById('close-import-btn');
+const importGitUrl = document.getElementById('import-git-url');
+const importGitFolder = document.getElementById('import-git-folder');
+const btnDoClone = document.getElementById('btn-do-clone');
+const btnDoPull = document.getElementById('btn-do-pull');
+const importPullFolder = document.getElementById('import-pull-folder');
+const importFileInput = document.getElementById('import-file-input');
+const btnDoUpload = document.getElementById('btn-do-upload');
+const importStatusMsg = document.getElementById('import-status-msg');
+
+if (openImportBtn) {
+  openImportBtn.addEventListener('click', () => {
+    importModal.classList.remove('hidden');
+    importStatusMsg.classList.add('hidden');
+    lucide.createIcons();
+  });
+}
+
+if (closeImportBtn) {
+  closeImportBtn.addEventListener('click', () => {
+    importModal.classList.add('hidden');
+  });
+}
+
+if (btnDoClone) {
+  btnDoClone.addEventListener('click', async () => {
+    const gitUrl = importGitUrl.value.trim();
+    const folderName = importGitFolder.value.trim();
+    if (!gitUrl) {
+      alert('Please enter a Git URL');
+      return;
+    }
+    btnDoClone.disabled = true;
+    btnDoClone.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Cloning repository...</span>';
+    lucide.createIcons();
+    try {
+      const res = await fetch('/api/projects/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gitUrl, folderName })
+      });
+      const data = await res.json();
+      importStatusMsg.classList.remove('hidden');
+      if (data.success) {
+        importStatusMsg.className = 'text-xs p-3 rounded-lg bg-emerald-950/60 border border-emerald-800 text-emerald-300';
+        importStatusMsg.innerHTML = `✅ Successfully cloned into <b>/workspace/${data.folder}</b>`;
+        loadWorkspaceFiles();
+      } else {
+        importStatusMsg.className = 'text-xs p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300';
+        importStatusMsg.innerHTML = `❌ Clone error: ${data.details || 'Unknown error'}`;
+      }
+    } catch (err) {
+      importStatusMsg.classList.remove('hidden');
+      importStatusMsg.className = 'text-xs p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300';
+      importStatusMsg.textContent = 'Network or server error during clone';
+    } finally {
+      btnDoClone.disabled = false;
+      btnDoClone.innerHTML = '<i data-lucide="download-cloud" class="w-4 h-4"></i><span>Clone Repository to Workspace</span>';
+      lucide.createIcons();
+    }
+  });
+}
+
+if (btnDoPull) {
+  btnDoPull.addEventListener('click', async () => {
+    const folderName = importPullFolder.value.trim();
+    btnDoPull.disabled = true;
+    btnDoPull.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Pulling changes...</span>';
+    lucide.createIcons();
+    try {
+      const res = await fetch('/api/projects/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folderName })
+      });
+      const data = await res.json();
+      importStatusMsg.classList.remove('hidden');
+      if (data.success) {
+        importStatusMsg.className = 'text-xs p-3 rounded-lg bg-emerald-950/60 border border-emerald-800 text-emerald-300';
+        importStatusMsg.innerHTML = `✅ Git Pull completed:<br><pre class="mt-1 font-mono text-[10px] whitespace-pre-wrap">${data.details}</pre>`;
+        loadWorkspaceFiles();
+      } else {
+        importStatusMsg.className = 'text-xs p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300';
+        importStatusMsg.innerHTML = `❌ Pull error: ${data.details || 'Unknown error'}`;
+      }
+    } catch (err) {
+      importStatusMsg.classList.remove('hidden');
+      importStatusMsg.className = 'text-xs p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300';
+      importStatusMsg.textContent = 'Network or server error during pull';
+    } finally {
+      btnDoPull.disabled = false;
+      btnDoPull.innerHTML = '<i data-lucide="git-pull-request" class="w-4 h-4"></i><span>Run Git Pull</span>';
+      lucide.createIcons();
+    }
+  });
+}
+
+if (btnDoUpload) {
+  btnDoUpload.addEventListener('click', async () => {
+    const files = importFileInput.files;
+    if (!files || files.length === 0) {
+      alert('Please select files to upload');
+      return;
+    }
+    btnDoUpload.disabled = true;
+    btnDoUpload.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Uploading files...</span>';
+    lucide.createIcons();
+    try {
+      const fileList = [];
+      for (const file of files) {
+        const text = await file.text();
+        fileList.push({ path: file.name, content: text });
+      }
+      const res = await fetch('/api/projects/import-files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: fileList })
+      });
+      const data = await res.json();
+      importStatusMsg.classList.remove('hidden');
+      if (data.success) {
+        importStatusMsg.className = 'text-xs p-3 rounded-lg bg-emerald-950/60 border border-emerald-800 text-emerald-300';
+        importStatusMsg.innerHTML = `✅ Successfully imported <b>${data.count} file(s)</b> into /workspace`;
+        loadWorkspaceFiles();
+      } else {
+        importStatusMsg.className = 'text-xs p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300';
+        importStatusMsg.textContent = 'Upload failed';
+      }
+    } catch (err) {
+      importStatusMsg.classList.remove('hidden');
+      importStatusMsg.className = 'text-xs p-3 rounded-lg bg-red-950/60 border border-red-800 text-red-300';
+      importStatusMsg.textContent = 'File upload error: ' + err.message;
+    } finally {
+      btnDoUpload.disabled = false;
+      btnDoUpload.innerHTML = '<i data-lucide="upload" class="w-4 h-4"></i><span>Upload Files to Workspace</span>';
+      lucide.createIcons();
+    }
+  });
+}
 
 // Start App
 window.addEventListener('DOMContentLoaded', initApp);
