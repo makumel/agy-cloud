@@ -147,7 +147,7 @@ app.post('/api/chat', authMiddleware, async (req, res) => {
 
     const assistantResult = await gemini.runAgentTurn({
       apiKey: effectiveKey,
-      model: model || 'gemini-2.5-flash',
+      model: model || 'gemini-3.5-flash',
       messages: session.messages,
       onChunk: (chunk) => {
         sendSSE('chunk', chunk);
@@ -222,6 +222,49 @@ app.post('/api/terminal', authMiddleware, async (req, res) => {
   if (!command) return res.status(400).json({ error: 'Command required' });
   const result = await tools.executeTool('execute_command', { command });
   res.json(result);
+});
+
+// --- Project Import & Git Clone API ---
+app.post('/api/projects/clone', authMiddleware, async (req, res) => {
+  const { gitUrl, folderName } = req.body;
+  if (!gitUrl) return res.status(400).json({ error: 'Git URL is required' });
+  const safeName = (folderName || gitUrl.split('/').pop().replace('.git', '')).replace(/[^a-zA-Z0-9_\-\.]/g, '');
+  const cmd = `cd "${tools.WORKSPACE_ROOT}" && git clone "${gitUrl}" "${safeName}"`;
+  const result = await tools.executeTool('execute_command', { command: cmd });
+  res.json({ success: result.success, folder: safeName, details: result.output || result.error });
+});
+
+app.post('/api/projects/pull', authMiddleware, async (req, res) => {
+  const { folderName } = req.body;
+  const targetDir = folderName ? path.join(tools.WORKSPACE_ROOT, folderName) : tools.WORKSPACE_ROOT;
+  const cmd = `cd "${targetDir}" && git pull`;
+  const result = await tools.executeTool('execute_command', { command: cmd });
+  res.json({ success: result.success, details: result.output || result.error });
+});
+
+app.post('/api/projects/import-files', authMiddleware, async (req, res) => {
+  const { files } = req.body;
+  if (!Array.isArray(files)) return res.status(400).json({ error: 'Files array is required' });
+  let count = 0;
+  for (const f of files) {
+    if (f.path && f.content !== undefined) {
+      await tools.executeTool('write_file', { path: f.path, content: f.content });
+      count++;
+    }
+  }
+  res.json({ success: true, count });
+});
+
+app.post('/api/projects/mkdir', authMiddleware, async (req, res) => {
+  const { dirPath } = req.body;
+  if (!dirPath) return res.status(400).json({ error: 'Directory path required' });
+  const full = path.join(tools.WORKSPACE_ROOT, dirPath);
+  try {
+    fs.mkdirSync(full, { recursive: true });
+    res.json({ success: true, path: dirPath });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // --- System Telemetry ---
