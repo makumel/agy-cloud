@@ -1,0 +1,15 @@
+{
+  "name": "agy-web-agent",
+  "version": "2.0.0",
+  "description": "Antigravity 2.0 Cloud Web Agent with Continuous Memory, Artifacts, and Workspace Tools",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "cookie-parser": "^1.4.6"
+  }
+}
